@@ -1,4 +1,6 @@
 package com.example.vacationcalculator.service;
+
+import com.example.vacationcalculator.util.HolidaysCollection;
 import com.example.vacationcalculator.util.VacationCalculatorUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -7,49 +9,56 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Stream;
 
+
+/**
+ * Этот класс реализует логику расчета отпускных выплат.
+ */
 @Service
 @Component
-public class VacationCalculatorServiceImpl implements VacationCalculatorService{
+public class VacationCalculatorServiceImpl implements VacationCalculatorService {
+
+    private final HolidaysCollection holidays;
 
     @Autowired
-    private HolidayService holidayService;
-
+    public VacationCalculatorServiceImpl(HolidaysCollection holidays) {
+        this.holidays = holidays;
+    }
+    /**
+     * Метод для расчета базовой отпускной выплаты без учета праздничных дней.
+     * @return сумма отпускной выплаты
+     * @throws RuntimeException если введены некорректные данные (отрицательная зарплата или количество дней)
+     */
     @Override
     public double calculateVacationPayBasic(double averageSalary, int vacationDays) {
-        return VacationCalculatorUtils.calculateVacationPayBasic(averageSalary, vacationDays);
+        if (averageSalary < 1 || vacationDays < 1) {
+            throw new RuntimeException("Incorrect input data");
+        } else {
+            return VacationCalculatorUtils.calculateVacationPayBasic(averageSalary, vacationDays);
+        }
     }
-
+    /**
+     * Метод для расчета отпускной выплаты с учетом праздничных и выходных дней.
+     * @return сумма отпускной выплаты
+     * @throws RuntimeException если введены некорректные данные (отрицательная зарплата или количество дней,
+     *                          дата начала позже даты окончания, количество дней не соответствует диапазону дат)
+     */
     @Override
     public double calculateVacationPayAdvanced(double averageSalary, int vacationDays, String startDate, String endDate) {
-        //TODO: implement advanced calculation with HolidayService
         LocalDate start = LocalDate.parse(startDate, DateTimeFormatter.ISO_DATE);
         LocalDate end = LocalDate.parse(endDate, DateTimeFormatter.ISO_DATE);
+        long countDays = ChronoUnit.DAYS.between(start,end)+1;
 
-        int year = start.getYear();
-        List< Map<String,Object>> holidays = holidayService.getHolidaysForYear(year);
-
-        long workingDays = Stream.iterate(start, date -> date.plusDays(1))
-                .limit(ChronoUnit.DAYS.between(start, end.plusDays(1)) + 1)
-                .filter(day -> isWorkingDay(day, holidays))
-                .count();
-        return 0;
-    }
-
-    private boolean isWorkingDay(LocalDate date, List<Map<String, Object>> holidays){
-        if (date.getDayOfWeek().getValue() >= 6){
-            return false;
-        }
-
-        for (Map<String, Object> holiday : holidays){
-            LocalDate holidayDate = LocalDate.parse((String) holiday.get("date"), DateTimeFormatter.ISO_DATE);
-            if (holidayDate.equals(date) && (int) holiday.get("isWorking") != 0){
-                return false;
+        if (averageSalary < 1 || vacationDays < 1 || start.isAfter(end) || countDays != vacationDays) {
+            throw new RuntimeException("Incorrect input data!");
+        } else {
+            while (!start.isAfter(end)){
+                if (start.getDayOfWeek().getValue() >= 6 || holidays.isHoliday(start)){
+                    vacationDays--;
+                }
+                start = start.plusDays(1);
             }
+            return VacationCalculatorUtils.calculateVacationPayBasic(averageSalary,vacationDays);
         }
-        return true;
     }
 }
